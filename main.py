@@ -11,6 +11,8 @@ from typing import List, Dict
 from PyPDF2 import PdfReader
 from openai import OpenAI
 from dotenv import load_dotenv
+import base64
+
 
 load_dotenv()
 
@@ -120,46 +122,50 @@ def main():
                 
                 #check if file was already proccessed 
                 if not check_file_already_proccessed(master_file=master_json, pdf_filename=pdf_path.name):
-                    print("📄 Extracting PDF...")
-                    text = extract_pdf_text(pdf_path)
-                    
-                    client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
-                    
-                    system_prompt = f"""You are a world class security engineer reviewing {pdf_path} 
-                    (part of the latest AUTOSAR specification). ONLY SUGGEST HIGHLY RELEVANT NEW SECURITY EVENT LOGS. 
-                    (not similar/identical to existing ones).
-                    IF YOU DONT THINK YOU HAVE ANY NEW HIGHLY RELEVANT SECURITY EVENT LOGS, THEN DONT SUGGEST THEM.
+                    with open(pdf_path, "rb") as f:
+                        print("📄 Converting PDF to Base64 format...")
+                        
+                        pdf_b64 = base64.b64encode(f.read()).decode("utf-8")
+                        
+                        client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
+                        
+                        system_prompt = f"""You are a world class security engineer reviewing {pdf_path} 
+                        (part of the latest AUTOSAR specification). Your job is to review the attached pdf file analyze it and identify and suggest new relevant security event logs.
+                        ONLY SUGGEST HIGHLY RELEVANT NEW SECURITY EVENT LOGS. 
+                        (not similar/identical to existing ones).
+                        IF YOU DONT THINK YOU HAVE ANY NEW HIGHLY RELEVANT SECURITY EVENT LOGS, THEN DONT SUGGEST THEM.
 
-                    FORMAT (if events exist):
-                    Specification section: 'Filename'
-                    System event: 'name of suggested new event'
-                    Suggested log: 'context variable names to be added to the log context'
-                    Rationale: 'Explain the reasoning behind choosing this new event'
+                        FORMAT (if events exist):
+                        Specification section: 'Filename'
+                        System event: 'name of suggested new event'
+                        Suggested log: 'context variable names to be added to the log context'
+                        Rationale: 'Explain the reasoning behind choosing this new event'
 
-                    FORMAT (if no new events):
-                    ***N/A***
-                    (explanation as of why not)"""
+                        FORMAT (if no new events):
+                        ***N/A***
+                        (explanation as of why not)"""
 
-                    print("🤖 Analyzing with sonar model...")
-                    response = client.chat.completions.create(
-                        model="sonar",  # Cheapest
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": f"This is the file to review:\n\n{text}"}
-                        ],
-                        temperature=0.1,
-                        max_tokens=2048,
-                    )
-                    
-                    content = response.choices[0].message.content
-                    print("\n📋 Response preview:")
-                    print(content[:100] + "..." if len(content) > 100 else content)
-                    
-                    # Parse & append to master JSON
-                    results = parse_results(content)
-                    append_to_master_json(results, pdf_path.name, master_json)
-                    
-                    print(f"\n💾 Master file updated:")
+                        print("🤖 Analyzing with sonar model...")
+                        response = client.chat.completions.create(
+                            model="sonar",  # Cheapest
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": [ 
+                                    {"type": "text", "text": "Read the attached BASE64 PDF file and extract the findings according to the system instructions."},
+                                    {"type": "file_url", "file_url": {"url": pdf_b64}, "file_name": pdf_path.name},]}],
+                            temperature=0.1,
+                            max_tokens=2048,
+                        )
+                        
+                        content = response.choices[0].message.content
+                        print("\n📋 Response preview:")
+                        print(content[:100] + "..." if len(content) > 100 else content)
+                        
+                        # Parse & append to master JSON
+                        results = parse_results(content)
+                        append_to_master_json(results, pdf_path.name, master_json)
+                        
+                        print(f"\n💾 Master file updated:")
 
                 #file has already been proccessed
                 else:
