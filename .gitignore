@@ -1,5 +1,9 @@
 # Ignore environment variables
 .env
+Gemini API key.txt
+autosar_security_events.json
+New Events.csv
+No New Events.csv
 
 # Ignore AUTOSAR specification folder
 Autosar_Standards/
